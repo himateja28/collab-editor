@@ -6,62 +6,54 @@ import api from "../services/api";
 const InvitePage = () => {
   const { token } = useParams();
   const navigate = useNavigate();
-
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
   const [invite, setInvite] = useState(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const loadInvite = async () => {
+    (async () => {
       try {
-        const response = await api.get(`/documents/invite/${token}`);
-        setInvite(response.data);
-      } catch (requestError) {
-        setError(requestError.response?.data?.message || "Unable to open invite link.");
+        const r = await api.get(`/documents/invite/${token}`);
+        setInvite(r.data);
+      } catch (e) {
+        setError(e.response?.data?.message || "Unable to open invite link.");
       } finally {
         setLoading(false);
       }
-    };
-
-    loadInvite();
+    })();
   }, [token]);
 
-  const acceptInvite = async () => {
+  const accept = async () => {
+    setJoining(true); setError("");
     try {
-      setJoining(true);
-      setError("");
-      const response = await api.post(`/documents/invite/${token}/accept`);
-      navigate(`/documents/${response.data.id}`);
-    } catch (requestError) {
-      setError(requestError.response?.data?.message || "Failed to join document.");
+      const r = await api.post(`/documents/invite/${token}/accept`);
+      navigate(`/documents/${r.data.id}`);
+    } catch (e) {
+      setError(e.response?.data?.message || "Failed to join.");
     } finally {
       setJoining(false);
     }
   };
 
   return (
-    <div className="page-shell">
+    <div id="invite-page">
       <Navbar />
-      <main className="invite-layout">
-        <section className="invite-card">
-          {loading ? <p>Loading invite...</p> : null}
-
-          {!loading && invite ? (
+      <main className="invite-page">
+        <section className="invite-card" id="invite-card">
+          {loading ? (
+            <div className="loading-block"><span className="spinner spinner--lg" />Loading invite…</div>
+          ) : invite ? (
             <>
-              <h1>Document Invite</h1>
-              <p>
-                You were invited to <strong>{invite.title}</strong> by{" "}
-                <strong>{invite.owner?.name || "a collaborator"}</strong>.
-              </p>
-              <p>Your access after joining: {invite.inviteRole}</p>
-              <button className="primary-btn" disabled={joining} onClick={acceptInvite} type="button">
-                {joining ? "Joining..." : "Join Document"}
+              <h1>📨 You're Invited</h1>
+              <p>You were invited to <strong>{invite.title}</strong> by <strong>{invite.owner?.name || "a collaborator"}</strong>.</p>
+              <p>Access level: <strong>{invite.inviteRole}</strong></p>
+              <button className="btn btn-primary" disabled={joining} onClick={accept} style={{ justifySelf: "start" }}>
+                {joining ? <><span className="spinner" /> Joining…</> : "Join Document"}
               </button>
             </>
           ) : null}
-
-          {error ? <p className="error-text">{error}</p> : null}
+          {error && <div className="error-box">{error}</div>}
         </section>
       </main>
     </div>

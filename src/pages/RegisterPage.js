@@ -6,87 +6,69 @@ import api from "../services/api";
 const RegisterPage = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
-
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const handleChange = (event) => {
-    const { name, value } = event.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-  };
+  const handleChange = (e) => setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     setSubmitting(true);
     setError("");
-
     try {
-      const response = await api.post("/auth/register", form);
-      login(response.data.token, response.data.user);
+      const res = await api.post("/auth/register", form);
+      login(res.data.token, res.data.user);
       navigate("/dashboard");
-    } catch (requestError) {
-      setError(requestError.response?.data?.message || "Failed to register.");
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to register.");
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="auth-layout">
-      <div className="auth-card">
-        <h1>Create account</h1>
-        <p>Start writing together with your team in seconds.</p>
+    <div className="auth-page" id="register-page">
+      <div className="auth-brand">
+        <div className="auth-brand-content">
+          <div className="auth-brand-logo">🚀</div>
+          <h1>Get Started</h1>
+          <p>Join thousands of teams who collaborate, co-write, and ship faster together with Collab Ink.</p>
+        </div>
+      </div>
 
-        <form onSubmit={handleSubmit} className="auth-form">
-          <label>
-            Full name
-            <input
-              name="name"
-              onChange={handleChange}
-              placeholder="Alex Johnson"
-              required
-              value={form.name}
-            />
-          </label>
+      <div className="auth-form-side">
+        <div className="auth-card">
+          <h2>Create account</h2>
+          <p className="subtitle">Start writing together in seconds.</p>
 
-          <label>
-            Email
-            <input
-              autoComplete="email"
-              name="email"
-              onChange={handleChange}
-              placeholder="you@example.com"
-              required
-              type="email"
-              value={form.email}
-            />
-          </label>
+          <form className="auth-form" id="register-form" onSubmit={handleSubmit}>
+            <div className="input-group">
+              <label htmlFor="register-name">Full name</label>
+              <input className="input-field" id="register-name" name="name" placeholder="Alex Johnson" required value={form.name} onChange={handleChange} />
+            </div>
 
-          <label>
-            Password
-            <input
-              autoComplete="new-password"
-              minLength={6}
-              name="password"
-              onChange={handleChange}
-              placeholder="At least 6 characters"
-              required
-              type="password"
-              value={form.password}
-            />
-          </label>
+            <div className="input-group">
+              <label htmlFor="register-email">Email address</label>
+              <input className="input-field" id="register-email" name="email" type="email" placeholder="you@example.com" required autoComplete="email" value={form.email} onChange={handleChange} />
+            </div>
 
-          {error ? <p className="error-text">{error}</p> : null}
+            <div className="input-group">
+              <label htmlFor="register-password">Password</label>
+              <input className="input-field" id="register-password" name="password" type="password" placeholder="Min 6 characters" required minLength={6} autoComplete="new-password" value={form.password} onChange={handleChange} />
+            </div>
 
-          <button className="primary-btn" disabled={submitting} type="submit">
-            {submitting ? "Creating account..." : "Sign up"}
-          </button>
-        </form>
+            {error && <div className="error-box">{error}</div>}
 
-        <p>
-          Already have an account? <Link to="/login">Login</Link>
-        </p>
+            <button className="btn btn-primary" disabled={submitting} type="submit" id="register-submit" style={{ width: "100%", padding: "12px" }}>
+              {submitting ? <><span className="spinner" /> Creating account…</> : "Create account"}
+            </button>
+          </form>
+
+          <p className="auth-footer">
+            Already have an account? <Link to="/login">Sign in</Link>
+          </p>
+        </div>
       </div>
     </div>
   );

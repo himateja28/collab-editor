@@ -19,6 +19,10 @@ const getRoomState = (docId) => {
   return activeRooms.get(docId);
 };
 
+/**
+ * Debounced save — waits 3s after the last edit before persisting.
+ * Uses $push with $slice to cap version history server-side.
+ */
 const scheduleSave = (docId, userId) => {
   const existingTimer = saveTimers.get(docId);
   if (existingTimer) {
@@ -29,30 +33,63 @@ const scheduleSave = (docId, userId) => {
     const roomState = activeRooms.get(docId);
     if (!roomState) return;
 
-    await Document.findByIdAndUpdate(docId, {
-      content: roomState.delta,
-      version: roomState.version,
-      lastEditedBy: userId,
-      $push: {
-        versions: {
-          content: roomState.delta,
-          version: roomState.version,
-          savedBy: userId,
-          reason: "autosave",
+    try {
+      await Document.findByIdAndUpdate(docId, {
+        content: roomState.delta,
+        version: roomState.version,
+        lastEditedBy: userId,
+        $push: {
+          versions: {
+            $each: [
+              {
+                content: roomState.delta,
+                version: roomState.version,
+                savedBy: userId,
+                reason: "autosave",
+              },
+            ],
+            $slice: -50, // Keep only the last 50 versions
+          },
         },
-      },
-    });
+      });
+    } catch (error) {
+      console.error(`[Socket] Failed to autosave doc ${docId}:`, error.message);
+    }
 
     saveTimers.delete(docId);
-  }, 1500);
+  }, 3000);
 
   saveTimers.set(docId, timer);
 };
 
+/**
+ * Clean up a room if no users remain. Prevents memory leaks
+ * from abandoned document rooms.
+ */
+const cleanupRoom = (docId) => {
+  const roomState = activeRooms.get(docId);
+  if (!roomState || roomState.users.size > 0) return;
+
+  // Clear any pending save timer
+  const timer = saveTimers.get(docId);
+  if (timer) {
+    clearTimeout(timer);
+    saveTimers.delete(docId);
+  }
+
+  activeRooms.delete(docId);
+};
+
 const authenticateSocket = async (token) => {
   if (!token) throw new Error("Missing socket token");
-  const decoded = jwt.verify(token, process.env.JWT_SECRET);
-  const user = await User.findById(decoded.userId).select("name email avatarColor");
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error("JWT_SECRET is not configured");
+
+  const decoded = jwt.verify(token, secret);
+  const user = await User.findById(decoded.userId).select(
+    "name email avatarColor"
+  );
   if (!user) throw new Error("Invalid socket token");
   return user;
 };
@@ -65,13 +102,17 @@ const initializeCollaborationSocket = (io) => {
         const document = await Document.findById(docId);
 
         if (!document || !canRead(document, user._id)) {
-          socket.emit("document:error", { message: "Document access denied." });
+          socket.emit("document:error", {
+            message: "Document access denied.",
+          });
           return;
         }
 
         const roomState = getRoomState(docId);
         if (!roomState.loaded) {
-          roomState.delta = new Delta(document.content?.ops || [{ insert: "\n" }]);
+          roomState.delta = new Delta(
+            document.content?.ops || [{ insert: "\n" }]
+          );
           roomState.version = document.version || 0;
           roomState.loaded = true;
         }
@@ -94,9 +135,14 @@ const initializeCollaborationSocket = (io) => {
           role: socket.data.canEdit ? "editor" : "viewer",
         });
 
-        io.to(docId).emit("presence:update", Array.from(roomState.users.values()));
+        io.to(docId).emit(
+          "presence:update",
+          Array.from(roomState.users.values())
+        );
       } catch (error) {
-        socket.emit("document:error", { message: "Unable to join document." });
+        socket.emit("document:error", {
+          message: "Unable to join document.",
+        });
       }
     });
 
@@ -122,7 +168,9 @@ const initializeCollaborationSocket = (io) => {
 
         scheduleSave(docId, user._id);
       } catch (error) {
-        socket.emit("document:error", { message: "Failed to apply change." });
+        socket.emit("document:error", {
+          message: "Failed to apply change.",
+        });
       }
     });
 
@@ -140,19 +188,38 @@ const initializeCollaborationSocket = (io) => {
       });
     });
 
+    socket.on("document:typing", ({ isTyping }) => {
+      const { user, docId } = socket.data;
+      if (!user || !docId) return;
+
+      socket.to(docId).emit("document:remote-typing", {
+        userId: user._id,
+        name: user.name,
+        isTyping,
+      });
+    });
+
     socket.on("document:comment", async ({ text, range }) => {
       const { user, docId } = socket.data;
       if (!user || !docId || !text?.trim()) return;
 
-      const document = await Document.findById(docId);
-      if (!document || !canRead(document, user._id)) return;
+      try {
+        const document = await Document.findById(docId);
+        if (!document || !canRead(document, user._id)) return;
 
-      document.comments.push({ text: text.trim(), range, author: user._id });
-      await document.save();
-      await document.populate("comments.author", "name email avatarColor");
+        document.comments.push({
+          text: text.trim(),
+          range,
+          author: user._id,
+        });
+        await document.save();
+        await document.populate("comments.author", "name email avatarColor");
 
-      const comment = document.comments[document.comments.length - 1];
-      io.to(docId).emit("document:new-comment", comment);
+        const comment = document.comments[document.comments.length - 1];
+        io.to(docId).emit("document:new-comment", comment);
+      } catch (error) {
+        console.error(`[Socket] Failed to add comment in doc ${docId}:`, error.message);
+      }
     });
 
     socket.on("disconnect", () => {
@@ -162,7 +229,13 @@ const initializeCollaborationSocket = (io) => {
       const roomState = activeRooms.get(docId);
       roomState.users.delete(socket.id);
 
-      io.to(docId).emit("presence:update", Array.from(roomState.users.values()));
+      io.to(docId).emit(
+        "presence:update",
+        Array.from(roomState.users.values())
+      );
+
+      // Clean up empty rooms to prevent memory leaks
+      cleanupRoom(docId);
     });
   });
 };

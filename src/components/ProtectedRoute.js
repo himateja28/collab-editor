@@ -5,7 +5,14 @@ const ProtectedRoute = () => {
   const { isAuthenticated, loading } = useAuth();
 
   if (loading) {
-    return <div className="screen-center">Loading your workspace...</div>;
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}>
+        <div className="loading-block">
+          <span className="spinner spinner--lg" />
+          Loading your workspace…
+        </div>
+      </div>
+    );
   }
 
   return isAuthenticated ? <Outlet /> : <Navigate to="/login" replace />;

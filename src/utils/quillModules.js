@@ -24,4 +24,6 @@ export const editorFormats = [
   "align",
   "link",
   "image",
+  "background",
+  "color",
 ];

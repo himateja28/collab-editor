@@ -106,6 +106,12 @@ const documentSchema = new mongoose.Schema(
       ref: "User",
       default: null,
     },
+    starredBy: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
   },
   { timestamps: true }
 );

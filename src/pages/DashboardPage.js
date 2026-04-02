@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import api from "../services/api";
@@ -9,99 +9,155 @@ const DashboardPage = () => {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
+  const [filterMode, setFilterMode] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
 
-  const loadDocuments = async () => {
+  const loadDocuments = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await api.get("/documents");
-      setDocuments(response.data);
-    } catch (_error) {
-      setError("Failed to load your documents.");
+      const res = await api.get("/documents");
+      setDocuments(res.data);
+    } catch (_e) {
+      setError("Failed to load documents.");
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadDocuments();
   }, []);
 
+  useEffect(() => { loadDocuments(); }, [loadDocuments]);
+
   const handleCreate = async () => {
+    setCreating(true);
     try {
-      setCreating(true);
-      const response = await api.post("/documents", { title: "Untitled document" });
-      navigate(`/documents/${response.data.id}`);
-    } catch (_error) {
-      setError("Failed to create a new document.");
+      const res = await api.post("/documents", { title: "Untitled document" });
+      navigate(`/documents/${res.data.id}`);
+    } catch (_e) {
+      setError("Failed to create document.");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleCreateTemplate = async (templateName) => {
+    setCreating(true);
+    try {
+      let content = { ops: [{ insert: "\n" }] };
+      if (templateName === "Project Brief") {
+        content = { ops: [{ insert: "Project Brief\n", attributes: { header: 1 } }, { insert: "\nOverview\n", attributes: { header: 2 } }, { insert: "Write project overview here.\n" }] };
+      } else if (templateName === "Meeting Notes") {
+        content = { ops: [{ insert: "Meeting Notes\n", attributes: { header: 1 } }, { insert: "Date: \nAttendees: \n\nAgenda:\n", attributes: { bold: true } }] };
+      }
+      const res = await api.post("/documents", { title: templateName, content });
+      navigate(`/documents/${res.data.id}`);
+    } catch (_e) {
+      setError("Failed to create document.");
     } finally {
       setCreating(false);
     }
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Delete this document permanently?")) {
-      return;
-    }
-
+    if (!window.confirm("Delete this document permanently?")) return;
     try {
       await api.delete(`/documents/${id}`);
-      setDocuments((prev) => prev.filter((doc) => doc.id !== id));
-    } catch (_error) {
-      setError("Failed to delete document. You may not be the owner.");
+      setDocuments((p) => p.filter((d) => d.id !== id));
+    } catch (_e) {
+      setError("Failed to delete. You may not be the owner.");
     }
   };
 
-  return (
-    <div className="page-shell">
-      <Navbar />
+  const timeAgo = (d) => {
+    const ms = Date.now() - new Date(d).getTime();
+    const m = Math.floor(ms / 60000);
+    if (m < 1) return "Just now";
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    return new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  };
 
-      <main className="dashboard-grid">
-        <section className="dashboard-header">
+  const filteredDocs = documents.filter(doc => {
+    const matchSearch = String(doc.title || "").toLowerCase().includes(searchQuery.toLowerCase());
+    const matchStar = filterMode === "all" || doc.starred;
+    return matchSearch && matchStar;
+  });
+
+  return (
+    <div id="dashboard-page">
+      <Navbar />
+      <main className="dashboard">
+        <section className="dashboard-head">
           <div>
-            <h1>Documents</h1>
-            <p>Build, review, and collaborate in live sessions.</p>
+            <h1>Your Documents</h1>
+            <p>Create, collaborate, and manage your work.</p>
           </div>
-          <button className="primary-btn" onClick={handleCreate} type="button">
-            {creating ? "Creating..." : "New document"}
+          <button className="btn btn-primary" disabled={creating} onClick={handleCreate} id="create-doc-btn">
+            {creating ? <><span className="spinner" /> Creating…</> : "+ New Document"}
           </button>
         </section>
 
-        {error ? <p className="error-text">{error}</p> : null}
+        {error && <div className="error-box" style={{ marginBottom: 16 }}>{error}</div>}
 
-        {loading ? <p>Loading documents...</p> : null}
-
-        {!loading && documents.length === 0 ? (
-          <article className="empty-card">
-            <h2>No documents yet</h2>
-            <p>Create your first collaborative document to get started.</p>
-          </article>
-        ) : null}
-
-        <section className="doc-list">
-          {documents.map((doc) => (
-            <article key={doc.id} className="doc-card">
-              <Link to={`/documents/${doc.id}`}>
-                <h3>{doc.title}</h3>
-              </Link>
-              <p className="meta-row">Role: {doc.role}</p>
-              <p className="meta-row">
-                Updated: {new Date(doc.updatedAt).toLocaleString()}
-              </p>
-              <div className="actions-row">
-                <Link className="ghost-btn" to={`/documents/${doc.id}`}>
-                  Open
-                </Link>
-                <button
-                  className="danger-btn"
-                  onClick={() => handleDelete(doc.id)}
-                  type="button"
-                >
-                  Delete
-                </button>
-              </div>
-            </article>
-          ))}
+        <section className="templates-section">
+          <h2>Start a new document</h2>
+          <div className="templates-grid">
+            <div className="template-card" onClick={() => handleCreateTemplate("Blank Document")}>
+              <span className="icon">📄</span>
+              <span className="name">Blank Document</span>
+            </div>
+            <div className="template-card" onClick={() => handleCreateTemplate("Project Brief")}>
+              <span className="icon">📋</span>
+              <span className="name">Project Brief</span>
+            </div>
+            <div className="template-card" onClick={() => handleCreateTemplate("Meeting Notes")}>
+              <span className="icon">🤝</span>
+              <span className="name">Meeting Notes</span>
+            </div>
+          </div>
         </section>
+
+        <div className="dashboard-controls">
+          <input
+            className="dashboard-search"
+            type="text"
+            placeholder="Search documents by title…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <div className="dashboard-tabs">
+            <button className={`dashboard-tab${filterMode === "all" ? " active" : ""}`} onClick={() => setFilterMode("all")}>All Documents</button>
+            <button className={`dashboard-tab${filterMode === "starred" ? " active" : ""}`} onClick={() => setFilterMode("starred")}>⭐️ Starred</button>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="loading-block"><span className="spinner spinner--lg" />Loading documents…</div>
+        ) : (
+          <div className="doc-grid" id="doc-grid">
+            {filteredDocs.length === 0 && (
+              <div className="empty-state" id="empty-docs">
+                <div className="empty-state-icon">📄</div>
+                <h2>No documents yet</h2>
+                <p>Create your first document to get started.</p>
+              </div>
+            )}
+            {filteredDocs.map((doc) => (
+              <article key={doc.id} className="doc-card" id={`doc-${doc.id}`}>
+                <h3 style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <Link to={`/documents/${doc.id}`}>{doc.title}</Link>
+                  {doc.starred && <span style={{ color: "var(--warning)", fontSize: "1.2rem" }}>★</span>}
+                </h3>
+                <div className="doc-meta">
+                  <strong>{doc.role}</strong> · {timeAgo(doc.updatedAt)}
+                </div>
+                <div className="doc-actions">
+                  <Link className="btn btn-secondary btn-sm" to={`/documents/${doc.id}`}>Open</Link>
+                  <button className="btn btn-danger btn-sm" onClick={() => handleDelete(doc.id)} type="button">Delete</button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </main>
     </div>
   );

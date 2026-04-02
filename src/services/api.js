@@ -5,6 +5,7 @@ export const API_BASE_URL =
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 15000,
 });
 
 api.interceptors.request.use((config) => {
@@ -16,5 +17,21 @@ api.interceptors.request.use((config) => {
 
   return config;
 });
+
+// Auto-logout on 401 responses (expired/invalid token)
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      const currentPath = window.location.pathname;
+      // Don't redirect if already on auth pages
+      if (currentPath !== "/login" && currentPath !== "/register") {
+        localStorage.removeItem("token");
+        window.location.href = "/login";
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 export default api;

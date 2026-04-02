@@ -1,14 +1,16 @@
+const dotenv = require("dotenv");
+
+// Load env vars BEFORE any module that reads process.env
+dotenv.config();
+
 const http = require("http");
 const express = require("express");
 const cors = require("cors");
-const dotenv = require("dotenv");
 const { Server } = require("socket.io");
 const connectDB = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
 const documentRoutes = require("./routes/documentRoutes");
 const initializeCollaborationSocket = require("./sockets/collaborationSocket");
-
-dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
@@ -18,6 +20,8 @@ const io = new Server(server, {
     origin: process.env.CLIENT_ORIGIN || "http://localhost:3000",
     credentials: true,
   },
+  pingTimeout: 60000,
+  pingInterval: 25000,
 });
 
 app.use(

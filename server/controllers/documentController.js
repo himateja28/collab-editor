@@ -10,12 +10,19 @@ const roleRank = {
 const listDocuments = async (req, res) => {
   try {
     const userId = req.user._id;
+    const { search } = req.query;
 
-    const docs = await Document.find({
+    const filter = {
       $or: [{ owner: userId }, { "collaborators.user": userId }],
-    })
+    };
+
+    if (search && search.trim()) {
+      filter.title = { $regex: search.trim(), $options: "i" };
+    }
+
+    const docs = await Document.find(filter)
       .sort({ updatedAt: -1 })
-      .select("title owner collaborators updatedAt createdAt");
+      .select("title owner collaborators updatedAt createdAt starredBy");
 
     const mapped = docs.map((doc) => ({
       id: doc._id,
@@ -25,6 +32,7 @@ const listDocuments = async (req, res) => {
       role: getRole(doc, userId),
       owner: doc.owner,
       collaborators: doc.collaborators,
+      starred: doc.starredBy?.some(id => String(id) === String(userId)) || false,
     }));
 
     return res.json(mapped);
@@ -35,15 +43,18 @@ const listDocuments = async (req, res) => {
 
 const createDocument = async (req, res) => {
   try {
-    const { title } = req.body;
+    const { title, content } = req.body;
+
+    const initialContent = content || { ops: [{ insert: "\n" }] };
 
     const doc = await Document.create({
       title: title?.trim() || "Untitled document",
       owner: req.user._id,
       collaborators: [{ user: req.user._id, role: "editor" }],
+      content: initialContent,
       versions: [
         {
-          content: { ops: [{ insert: "\n" }] },
+          content: initialContent,
           version: 0,
           savedBy: req.user._id,
           reason: "initial",
@@ -96,7 +107,7 @@ const updateDocument = async (req, res) => {
     const { id } = req.params;
     const { title, content, reason = "manual-save" } = req.body;
 
-    const doc = await Document.findById(id);
+    const doc = await Document.findById(id).select("-versions");
     if (!doc) {
       return res.status(404).json({ message: "Document not found." });
     }
@@ -105,27 +116,43 @@ const updateDocument = async (req, res) => {
       return res.status(403).json({ message: "You can view but not edit this document." });
     }
 
+    const updates = {};
+
     if (typeof title === "string" && title.trim()) {
-      doc.title = title.trim();
+      updates.title = title.trim();
     }
 
     if (content) {
-      doc.content = content;
-      doc.version += 1;
-      doc.lastEditedBy = req.user._id;
-      doc.versions.push({
-        content,
-        version: doc.version,
-        savedBy: req.user._id,
-        reason,
+      const nextVersion = (doc.version || 0) + 1;
+      updates.content = content;
+      updates.version = nextVersion;
+      updates.lastEditedBy = req.user._id;
+
+      // Atomic push with slice — never loads the full versions array
+      await Document.findByIdAndUpdate(id, {
+        $set: { content, version: nextVersion, lastEditedBy: req.user._id },
+        $push: {
+          versions: {
+            $each: [{ content, version: nextVersion, savedBy: req.user._id, reason }],
+            $slice: -50,
+          },
+        },
       });
 
-      if (doc.versions.length > 50) {
-        doc.versions = doc.versions.slice(-50);
+      // Also update title if changed
+      if (updates.title) {
+        await Document.findByIdAndUpdate(id, { $set: { title: updates.title } });
       }
+
+      return res.json({ message: "Document updated.", version: nextVersion });
     }
 
-    await doc.save();
+    // Title-only update (no content change)
+    if (updates.title) {
+      doc.title = updates.title;
+      await doc.save();
+    }
+
     return res.json({ message: "Document updated.", version: doc.version });
   } catch (error) {
     return res.status(500).json({ message: "Failed to update document." });
@@ -342,10 +369,10 @@ const resolveComment = async (req, res) => {
 
 const getHistory = async (req, res) => {
   try {
-    const doc = await Document.findById(req.params.id).populate(
-      "versions.savedBy",
-      "name email"
-    );
+    // Exclude the heavy 'content' field from each version entry
+    const doc = await Document.findById(req.params.id)
+      .select("versions._id versions.version versions.reason versions.createdAt versions.savedBy owner collaborators isPublic")
+      .populate("versions.savedBy", "name email");
 
     if (!doc) {
       return res.status(404).json({ message: "Document not found." });
@@ -372,6 +399,59 @@ const getHistory = async (req, res) => {
   }
 };
 
+const toggleStar = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user._id;
+
+    const doc = await Document.findById(id).select("starredBy owner collaborators");
+    if (!doc) return res.status(404).json({ message: "Document not found." });
+    if (!canRead(doc, userId)) return res.status(403).json({ message: "No access." });
+
+    const isStarred = doc.starredBy?.includes(userId);
+    if (isStarred) {
+      await Document.findByIdAndUpdate(id, { $pull: { starredBy: userId } });
+    } else {
+      await Document.findByIdAndUpdate(id, { $addToSet: { starredBy: userId } });
+    }
+
+    return res.json({ starred: !isStarred });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to toggle star." });
+  }
+};
+
+const restoreVersion = async (req, res) => {
+  try {
+    const { id, versionId } = req.params;
+
+    const doc = await Document.findById(id);
+    if (!doc) return res.status(404).json({ message: "Document not found." });
+    if (!canEdit(doc, req.user._id)) return res.status(403).json({ message: "No edit access." });
+
+    const vEntry = doc.versions.id(versionId);
+    if (!vEntry) return res.status(404).json({ message: "Version not found." });
+
+    const nextVersion = (doc.version || 0) + 1;
+    doc.content = vEntry.content;
+    doc.version = nextVersion;
+    doc.lastEditedBy = req.user._id;
+    doc.versions.push({
+      content: vEntry.content,
+      version: nextVersion,
+      savedBy: req.user._id,
+      reason: `restored v${vEntry.version}`,
+    });
+
+    if (doc.versions.length > 50) doc.versions = doc.versions.slice(-50);
+    await doc.save();
+
+    return res.json({ message: "Version restored.", version: nextVersion, content: doc.content });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to restore version." });
+  }
+};
+
 module.exports = {
   listDocuments,
   createDocument,
@@ -385,4 +465,6 @@ module.exports = {
   addComment,
   resolveComment,
   getHistory,
+  toggleStar,
+  restoreVersion,
 };

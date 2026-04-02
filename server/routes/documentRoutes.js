@@ -11,6 +11,8 @@ const {
   getInviteDetails,
   listDocuments,
   resolveComment,
+  restoreVersion,
+  toggleStar,
   updateDocument,
   updatePermissions,
 } = require("../controllers/documentController");
@@ -26,10 +28,12 @@ router.put("/:id", updateDocument);
 router.delete("/:id", deleteDocument);
 router.patch("/:id/permissions", updatePermissions);
 router.post("/:id/share-link", createShareLink);
+router.patch("/:id/star", toggleStar);
 router.get("/invite/:token", getInviteDetails);
 router.post("/invite/:token/accept", acceptInviteLink);
 router.get("/:id/history", getHistory);
 router.post("/:id/comments", addComment);
 router.patch("/:id/comments/:commentId/resolve", resolveComment);
+router.post("/:id/versions/:versionId/restore", restoreVersion);
 
 module.exports = router;
