@@ -340,6 +340,9 @@ const EditorPage = () => {
             </div>
           </div>
 
+          {/* Mobile sidebar backdrop */}
+          <div className={`sidebar-backdrop${sidebarOpen ? "" : " hidden"}`} onClick={() => setSidebarOpen(false)} />
+
           <aside className={`editor-sidebar${sidebarOpen ? "" : " hidden"}`} id="editor-sidebar">
             <div className="sidebar-section" id="presence-section">
               <div className="sidebar-heading">Online · {presence.length}</div>

@@ -259,17 +259,168 @@ body.dark-mode .comment-badge--range { color: #fbbf24; }
 @keyframes fade-up { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
 /* ═══════════════════ RESPONSIVE ═══════════════════ */
+
+/* ─── Sidebar overlay backdrop (mobile only) ─── */
+.sidebar-backdrop {
+  display: none;
+}
+
 @media (max-width: 900px) {
   .auth-page { grid-template-columns: 1fr; }
   .auth-brand { display: none; }
-  .editor-sidebar { position: fixed; right: 0; top: 56px; bottom: 0; z-index: 25; box-shadow: var(--shadow-lg); }
-  .editor-sidebar.hidden { width: 0; }
+
+  /* Sidebar: fixed slide-in panel */
+  .editor-sidebar {
+    position: fixed;
+    right: 0;
+    top: 56px;
+    bottom: 0;
+    z-index: 40;
+    width: 280px;
+    box-shadow: var(--shadow-xl);
+    transform: translateX(0);
+    transition: transform 250ms ease, opacity 200ms ease;
+  }
+  .editor-sidebar.hidden {
+    transform: translateX(100%);
+    opacity: 0;
+    pointer-events: none;
+    width: 280px;
+  }
+
+  /* Backdrop overlay when sidebar is open */
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    top: 56px;
+    z-index: 35;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(2px);
+    animation: fade-in 200ms ease;
+  }
+  .sidebar-backdrop.hidden {
+    display: none;
+  }
+
+  /* Editor topbar: stack vertically */
+  .editor-topbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 8px 12px;
+    min-height: auto;
+  }
+
+  /* Title row */
+  .editor-topbar > div:first-child {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+  }
+  .editor-title {
+    width: 100%;
+    min-width: 0;
+    font-size: 1rem;
+  }
+
+  /* Actions row: horizontally scrollable */
+  .editor-actions {
+    margin-left: 0;
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    gap: 6px;
+    padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .editor-actions::-webkit-scrollbar { display: none; }
+  .editor-actions .btn { flex-shrink: 0; }
+
+  /* Editor paper: tighter margins */
+  .editor-paper {
+    margin: 12px 8px;
+    border-radius: var(--radius-sm);
+  }
+
+  /* Quill toolbar: scrollable */
+  .editor-paper .ql-toolbar {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 6px 8px !important;
+  }
+  .editor-paper .ql-toolbar::-webkit-scrollbar { display: none; }
+  .editor-paper .ql-toolbar .ql-formats {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    margin-right: 8px;
+  }
 }
+
 @media (max-width: 680px) {
   .dashboard-head { flex-direction: column; align-items: start; gap: 12px; }
   .topbar-nav { display: none; }
   .doc-grid { grid-template-columns: 1fr; }
   .export-grid { grid-template-columns: 1fr; }
-  .editor-paper .ql-editor { padding: 20px 18px; }
+  .editor-paper .ql-editor { padding: 16px 14px; }
   .modal-card { padding: 20px; }
+
+  /* Topbar: compact on small screens */
+  .topbar {
+    padding: 0 12px;
+    gap: 8px;
+  }
+  .topbar-logo {
+    font-size: 0.95rem;
+    gap: 6px;
+  }
+  .topbar-logo-mark {
+    width: 24px;
+    height: 24px;
+    font-size: 0.6rem;
+  }
+  .user-pill {
+    padding: 3px 8px 3px 4px;
+    font-size: 0.78rem;
+  }
+  .user-avatar {
+    width: 22px;
+    height: 22px;
+    font-size: 0.58rem;
+  }
+
+  /* Editor topbar: even more compact */
+  .editor-topbar {
+    padding: 6px 10px;
+  }
+  .editor-title {
+    font-size: 0.92rem;
+  }
+  .editor-actions .btn-sm {
+    padding: 5px 10px;
+    font-size: 0.75rem;
+  }
+  .status-badge {
+    font-size: 0.65rem;
+    padding: 2px 7px;
+  }
+
+  /* Sidebar: full width on small phones */
+  .editor-sidebar {
+    width: 100%;
+  }
+  .editor-sidebar.hidden {
+    width: 100%;
+  }
+
+  /* Editor paper: remove side margins */
+  .editor-paper {
+    margin: 8px 4px;
+    border-radius: var(--radius-sm);
+  }
 }
