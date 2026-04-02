@@ -43,8 +43,7 @@ const useRemoteCursorOverlays = (quillRef, remoteCursors, currentUserId) => {
     const container = overlayContainerRef.current;
     if (!quill || !container) return;
 
-    const editorBounds = quill.root.getBoundingClientRect();
-    const containerBounds = container.getBoundingClientRect();
+
     const existingIds = new Set();
 
     Object.entries(remoteCursors).forEach(([userId, { remoteUser, range }]) => {
